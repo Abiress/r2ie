@@ -8,13 +8,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 import torch
 
 from .config import ModelConfig
 from .data import CharTokenizer
-from .model import R2IEModel
+from .engine import R2IEEngine
+from .errors import EmptyPromptError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,8 +30,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--device", type=str, default="auto",
                    choices=["auto", "cpu", "cuda"])
     p.add_argument("--use-fast-weights", action="store_true",
-                   help="Enable the fast-weight (Condensation Loop) modulation "
-                        "at inference time.")
+                   help="Enable the fast-weight modulation at inference time.")
+    p.add_argument("--use-condensation", action="store_true",
+                   help="Enable the Condensation Loop accretion during generation.")
+    p.add_argument("--use-governor", action="store_true",
+                   help="Enable the Velocity Governor compute acceleration.")
     return p
 
 
@@ -43,34 +48,53 @@ def resolve_device(device: str) -> torch.device:
     return torch.device("cpu")
 
 
+def _load_tokenizer(checkpoint_path: str, ckpt: dict, device: str) -> CharTokenizer:
+    if "tokenizer_chars" in ckpt:
+        chars = ckpt["tokenizer_chars"]
+    else:
+        tok_path = os.path.join(os.path.dirname(checkpoint_path), "tokenizer.pt")
+        tok_ckpt = torch.load(tok_path, map_location=device, weights_only=False)
+        chars = tok_ckpt["tokenizer_chars"]
+    return CharTokenizer("".join(chars))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     device = resolve_device(args.device)
 
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     config = ModelConfig(**ckpt["config"])
-    chars = ckpt["tokenizer_chars"]
-    tokenizer = CharTokenizer("".join(chars))
+    tokenizer = _load_tokenizer(args.checkpoint, ckpt, device)
 
-    model = R2IEModel(config).to(device)
-    model.load_state_dict(ckpt["model_state"])
-    model.eval()
+    # Honor loop flags from the checkpoint unless overridden on the CLI.
+    use_condensation = ckpt.get("use_condensation", False) or args.use_condensation
+    use_governor = ckpt.get("use_governor", False) or args.use_governor
+    use_fast_weights = ckpt.get("use_fast_weights", False) or args.use_fast_weights
 
-    if args.use_fast_weights:
-        model.reset_fast_memory()
+    engine = R2IEEngine(
+        config,
+        use_condensation=use_condensation,
+        use_governor=use_governor,
+        use_fast_weights=use_fast_weights,
+    ).to(device)
+    engine.model.load_state_dict(ckpt["model_state"])
+    engine.model.eval()
+    engine.reset_state()
 
     prompt_ids = tokenizer.encode(args.prompt)
-    if not prompt_ids:
-        prompt_ids = [0]
+    try:
+        engine.validate_prompt(torch.tensor(prompt_ids, dtype=torch.long))
+    except EmptyPromptError:
+        print("[warn] prompt encoded to zero tokens; using a single space.")
+        prompt_ids = tokenizer.encode(" ")
+
     generated = list(prompt_ids)
     context = torch.tensor([prompt_ids], dtype=torch.long, device=device)
 
     with torch.no_grad():
         for _ in range(args.max_tokens):
-            logits, _ = model(
-                context[:, -config.max_seq_len:],
-                use_fast_weights=args.use_fast_weights,
-                return_aux=False,
+            logits, _ = engine.forward_step(
+                context[:, -config.max_seq_len:], consolidate=use_condensation
             )
             next_logits = logits[0, -1] / args.temperature
             probs = torch.softmax(next_logits, dim=-1)

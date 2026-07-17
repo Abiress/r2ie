@@ -97,6 +97,7 @@ class R2IEModel(nn.Module):
                 "commitment_loss": commitment_loss,
                 "ponder_cost": ponder_cost,
                 "ponder_steps": steps,
+                "hidden": x,
             }
         return logits, aux
 

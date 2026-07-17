@@ -16,6 +16,32 @@ three ideas behind a loose mass–energy-equivalence metaphor:
 It is trainable end-to-end on a character-level language-modeling task and is meant to be
 read, modified, and learned from — not presented as a competitor to production Transformers.
 
+## Origin
+
+The conceptual starting point is an original idea by Abir Maheshwari: a
+mass–energy-equivalence metaphor (`E = m c²`) mapped onto an AI architecture —
+the "Recursive Relativistic Information Engine". The prototype implements that
+idea faithfully where it is tractable, and replaces the metaphor-only parts
+with published, trainable techniques (see "What this is not" below). The three
+recursive loops from the original concept are implemented as real, bounded
+modules (off by default, opt-in via CLI flags):
+
+- **Condensation Loop** (`condensation.py`) — a persistent, double-buffered
+  "mass" buffer that accretes high-confidence output energy (`m += α·E/c²`)
+  during an explicit consolidation phase. It is a *separate* buffer, never an
+  in-place overwrite of the trained weights.
+- **Velocity Governor** (`velocity_governor.py`) — estimates per-token coherence
+  (negative softmax entropy) and, when coherence is low, injects bounded
+  stochastic noise into the ACT halting logits so the field takes more ponder
+  steps (higher `c²`) before halting — the "escape velocity" behavior. An
+  Event-Horizon gate (`E > m·c²`) exposes the emission condition.
+- **Fast-weight modulation** (`fast_weight_loop.py`) — bounds and clamps a
+  Hebbian fast-weight matrix that modulates the output head at inference time.
+
+These are composed by `engine.py` (`R2IEEngine`), which also owns input
+validation (`errors.py`) and explicit buffer lifecycle so no non-trainable
+state leaks across sequences.
+
 ---
 
 ## Install
@@ -45,6 +71,13 @@ Generate text from a trained checkpoint:
 
 ```bash
 python -m r2ie.generate --checkpoint checkpoints/r2ie_latest.pt --prompt "THE " --max-tokens 200
+```
+
+Train or generate with the original recursive loops enabled (off by default):
+
+```bash
+python -m r2ie.train --data fixture --steps 500 --use-condensation --use-governor --use-fast-weights
+python -m r2ie.generate --checkpoint checkpoints/r2ie_latest.pt --prompt "THE " --use-condensation --use-governor
 ```
 
 **Expected runtime:** on CPU, 500 steps on the bundled fixture takes a few seconds; 2000

@@ -20,8 +20,8 @@ import torch
 
 from .config import ModelConfig
 from .data import make_dataloader
+from .engine import R2IEEngine
 from .metrics import average_ponder_steps, perplexity
-from .model import R2IEModel
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     p.add_argument("--runs-dir", type=str, default="runs")
     p.add_argument("--log-every", type=int, default=50)
+    p.add_argument("--use-condensation", action="store_true",
+                   help="Enable the Condensation Loop (RALE.docx Loop 1) at "
+                        "consolidation time. Off by default.")
+    p.add_argument("--use-governor", action="store_true",
+                   help="Enable the Velocity Governor (RALE.docx Loop 2) for "
+                        "coherence-driven compute acceleration. Off by default.")
+    p.add_argument("--use-fast-weights", action="store_true",
+                   help="Enable fast-weight (Condensation Loop) head modulation. "
+                        "Off by default.")
     return p
 
 
@@ -84,8 +93,13 @@ def main(argv: list[str] | None = None) -> None:
         fast_weight_lr=0.1,
         fast_weight_clamp=5.0,
     )
-    model = R2IEModel(config).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    engine = R2IEEngine(
+        config,
+        use_condensation=args.use_condensation,
+        use_governor=args.use_governor,
+        use_fast_weights=args.use_fast_weights,
+    ).to(device)
+    optimizer = torch.optim.Adam(engine.model.parameters(), lr=args.lr)
 
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     os.makedirs(args.runs_dir, exist_ok=True)
@@ -93,10 +107,10 @@ def main(argv: list[str] | None = None) -> None:
     csv_file = open(csv_path, "w", newline="")
     writer = csv.writer(csv_file)
     writer.writerow(["step", "ce_loss", "commitment_loss", "ponder_cost",
-                     "avg_ponder_steps", "perplexity"])
+                     "avg_ponder_steps", "perplexity", "governor_bias", "mass_norm"])
     print(f"[info] logging to {csv_path}")
 
-    model.train()
+    engine.model.train()
     loader_iter = iter(loader)
     initial_loss = None
     final_loss = None
@@ -110,7 +124,7 @@ def main(argv: list[str] | None = None) -> None:
         x, y = x.to(device), y.to(device)
 
         optimizer.zero_grad()
-        logits, aux = model(x, use_fast_weights=False, return_aux=True)
+        logits, aux = engine.forward_step(x, consolidate=args.use_condensation)
         ce = torch.nn.functional.cross_entropy(
             logits.reshape(-1, logits.size(-1)), y.reshape(-1)
         )
@@ -129,23 +143,30 @@ def main(argv: list[str] | None = None) -> None:
         if step % args.log_every == 0 or step == 1:
             ppl = perplexity(ce)
             aps = average_ponder_steps(aux["ponder_steps"])
+            extra = ""
+            if "governor_bias_mean" in aux:
+                extra += f" | gov {aux['governor_bias_mean'].item():.4f}"
+            if "mass_norm" in aux:
+                extra += f" | mass {aux['mass_norm']:.4f}"
             print(
                 f"step {step:>6} | ce {ce.item():.4f} | vq {aux['commitment_loss'].item():.4f} "
-                f"| ponder {aux['ponder_cost'].item():.4f} | avg_steps {aps:.2f} | ppl {ppl:.2f}"
+                f"| ponder {aux['ponder_cost'].item():.4f} | avg_steps {aps:.2f} | ppl {ppl:.2f}{extra}"
             )
             writer.writerow([
                 step, f"{ce.item():.4f}", f"{aux['commitment_loss'].item():.4f}",
                 f"{aux['ponder_cost'].item():.4f}", f"{aps:.4f}", f"{ppl:.4f}",
+                f"{aux.get('governor_bias_mean', torch.tensor(0.0)).item():.4f}",
+                f"{aux.get('mass_norm', 0.0):.4f}",
             ])
             csv_file.flush()
 
     csv_file.close()
 
     ckpt = os.path.join(args.checkpoint_dir, "r2ie_latest.pt")
-    from dataclasses import asdict
-
-    torch.save({"model_state": model.state_dict(), "config": asdict(config),
-                "tokenizer_chars": tokenizer.chars}, ckpt)
+    engine.save(ckpt)
+    # Persist the tokenizer chars alongside the engine checkpoint.
+    torch.save({"tokenizer_chars": tokenizer.chars},
+               os.path.join(args.checkpoint_dir, "tokenizer.pt"))
     print(f"[info] saved checkpoint -> {ckpt}")
 
     if initial_loss is not None and final_loss is not None:

@@ -42,7 +42,7 @@ class PlainTransformer(nn.Module):
     def forward(self, idx: torch.Tensor) -> torch.Tensor:
         b, t = idx.shape
         x = self.embed(idx) + self.pos[:, :t, :]
-        causal = nn.TransformerEncoderLayer.generate_square_subsequent_mask(t)
+        causal = torch.triu(torch.ones(t, t), diagonal=1).bool()
         h = self.enc(x, mask=causal)
         return self.head(h)
 
