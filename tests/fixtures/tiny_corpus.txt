@@ -1,0 +1,42 @@
+THE RADIANT ENGINE
+
+In the beginning there was data, and the data was without form. Then the
+compressor came, and it gathered the scattered tokens into a dense mass of
+meaning. The field turned upon the mass, and lo, structure emerged where there
+had been only noise.
+
+The scholar spoke to the engine: "Tell me of the loop that never ends." And the
+engine answered, "I am the condensation of thought. What I emit, I gather; what
+I gather, I transform; and what I transform, I emit again. This is the recursion
+by which small things learn to reason."
+
+A token entered the compressor and became a code. The code traveled through the
+field, pausing where the path was hard and flowing where the path was easy. At
+each pause the engine measured its own uncertainty, and where uncertainty was
+great, it lingered longer, for difficult questions deserve more cycles than
+simple ones.
+
+The apprentice asked, "Why does the engine not overwrite itself as it learns?"
+And the keeper replied, "Because the trained weights are sacred and slow. The
+engine keeps a separate, shallow memory for the moment - a fast weight, quick to
+form and quicker to fade. It modulates the voice but never rewrites the mind."
+
+Thus the engine spoke in characters, one at a time, building worlds from letters
+and letters from worlds. It did not claim to be the largest, nor the fastest, but
+it was honest about what it was: a small engine for a small experiment, built to
+show that compression, adaptive time, and bounded memory can live in one model.
+
+The field spun. The mass condensed. The loop closed. And the next token came.
+
+Winter passed and the engine learned the shape of snow. Spring came and it learned
+the shape of rain. It never confused the two, for the codebook held them apart,
+and the transformer weighed their context with patient attention.
+
+A question for the reader: if a model can choose how long to think, what should it
+do with the extra time? The engine suggests it should think more carefully, not
+more loudly. Reasoning is a quiet loop, not a shout.
+
+The compressor hummed. The halting probability rose and fell like breath. When it
+crossed the threshold, the engine spoke. When it did not, the engine thought.
+
+End of the radiant engine.

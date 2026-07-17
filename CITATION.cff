@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "R2IE - Recursive Relativistic Information Engine (Prototype)"
+abstract: "An experimental, small-scale research/education architecture combining vector-quantization bottlenecks, adaptive per-token compute (ACT), and bounded fast-weight adaptation."
+authors:
+  - family-names: "Maheshwari"
+    given-names: "Abir"
+license: MIT
+version: 0.1.0
+year: 2026
