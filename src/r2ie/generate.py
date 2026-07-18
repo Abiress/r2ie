@@ -34,7 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--use-condensation", action="store_true",
                    help="Enable the Condensation Loop accretion during generation.")
     p.add_argument("--use-governor", action="store_true",
-                   help="Enable the Velocity Governor compute acceleration.")
+                    help="Enable the Velocity Governor compute acceleration.")
+    p.add_argument("--use-hdq", action="store_true",
+                    help="Use the C++ HDQ mass buffer for the Condensation Loop.")
+    p.add_argument("--use-dtf", action="store_true",
+                    help="Enable the DTF Transformation Field during generation.")
+    p.add_argument("--vq-mode", type=str, default="hard", choices=["hard", "soft"],
+                    help="VQ Mass Compressor mode used for training.")
     return p
 
 
@@ -70,12 +76,18 @@ def main(argv: list[str] | None = None) -> int:
     use_condensation = ckpt.get("use_condensation", False) or args.use_condensation
     use_governor = ckpt.get("use_governor", False) or args.use_governor
     use_fast_weights = ckpt.get("use_fast_weights", False) or args.use_fast_weights
+    use_hdq = ckpt.get("use_hdq", False) or args.use_hdq
+    use_dtf = ckpt.get("use_dtf", False) or args.use_dtf
+    vq_mode = ckpt.get("vq_mode", args.vq_mode)
 
     engine = R2IEEngine(
         config,
         use_condensation=use_condensation,
         use_governor=use_governor,
         use_fast_weights=use_fast_weights,
+        use_hdq=use_hdq,
+        use_dtf=use_dtf,
+        vq_mode=vq_mode,
     ).to(device)
     engine.model.load_state_dict(ckpt["model_state"])
     engine.model.eval()

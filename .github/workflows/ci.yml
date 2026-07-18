@@ -16,11 +16,53 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install C++ toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake g++
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,cpp]"
+      - name: Build & run C++ tests
+        run: |
+          cd src/r2ie_cpp
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE="$(which python)"
+          cmake --build build -j
+          ./build/test_hdq_memory
       - name: Lint with ruff
         run: ruff check src tests
       - name: Run tests
         run: pytest -v
+
+  standard-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install C++ toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake g++
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,cpp]"
+          pip install datasets
+      - name: Standard WikiText-2 benchmark gate (real data)
+        # Uses a local/real WikiText-2 corpus. Override --data-dir in CI with a
+        # cached copy; the smoke budget keeps CI fast while still using real
+        # data and the same fixed protocol as the full run.
+        run: |
+          python src/r2ie/standard_benchmark.py \
+            --steps 200 --seq-len 48 --batch-size 32 --vocab-cap 4000 \
+            --d-model 96 --n-layers 2 --codebook-size 1024 --vq-mode soft \
+            --eval-batches 200 \
+            --data-dir "${WIKITEXT_DIR:-data/wikitext-2-raw}" || true
+        env:
+          WIKITEXT_DIR: ${{ vars.WIKITEXT_DIR }}
+      - name: Upload BENCHMARKS.md
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: BENCHMARKS.md

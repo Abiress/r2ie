@@ -47,8 +47,20 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Enable the Velocity Governor (RALE.docx Loop 2) for "
                         "coherence-driven compute acceleration. Off by default.")
     p.add_argument("--use-fast-weights", action="store_true",
-                   help="Enable fast-weight (Condensation Loop) head modulation. "
-                        "Off by default.")
+                    help="Enable fast-weight (Condensation Loop) head modulation. "
+                         "Off by default.")
+    p.add_argument("--use-hdq", action="store_true",
+                    help="Back the Condensation Loop's mass buffer with the C++ "
+                         "HDQ manager (RALE.docx Loop 1). Falls back to pure "
+                         "Python if the extension is absent. Off by default.")
+    p.add_argument("--use-dtf", action="store_true",
+                    help="Enable the DTF Transformation Field (RALE.docx Loop 2): "
+                         "trainable graph-diffusion over token positions. "
+                         "Off by default.")
+    p.add_argument("--vq-mode", type=str, default="hard", choices=["hard", "soft"],
+                    help="VQ Mass Compressor mode: 'hard' (true bottleneck) or "
+                         "'soft' (info-preserving codebook projection). 'soft' is "
+                         "used by the winning R2IE+DTF+HDQ benchmark config.")
     return p
 
 
@@ -98,6 +110,9 @@ def main(argv: list[str] | None = None) -> None:
         use_condensation=args.use_condensation,
         use_governor=args.use_governor,
         use_fast_weights=args.use_fast_weights,
+        use_hdq=args.use_hdq,
+        use_dtf=args.use_dtf,
+        vq_mode=args.vq_mode,
     ).to(device)
     optimizer = torch.optim.Adam(engine.model.parameters(), lr=args.lr)
 

@@ -13,7 +13,7 @@ from typing import Tuple
 
 import torch
 
-from .condensation import CondensationLoop
+from .condensation import make_condensation_loop
 from .config import ModelConfig
 from .errors import CheckpointMismatchError, EmptyPromptError
 from .model import R2IEModel
@@ -29,15 +29,42 @@ class R2IEEngine:
         use_condensation: bool = False,
         use_governor: bool = False,
         use_fast_weights: bool = False,
+        use_hdq: bool = False,
+        use_dtf: bool = False,
+        use_dtf_v2: bool = False,
+        use_dtf_v3: bool = False,
+        vq_mode: str = "hard",
     ):
         self.config = config
+        # Propagate architecture flags into the config consumed by R2IEModel.
+        config.use_dtf = use_dtf
+        config.use_dtf_v2 = use_dtf_v2
+        config.use_dtf_v3 = use_dtf_v3
+        config.use_hdq = use_hdq
+        config.vq_mode = vq_mode
+        # When DTFv3 is the primary mixer, reduce the ACT field to a single
+        # pass so the two global mixers don't compete for gradient signal.
+        if use_dtf_v3:
+            config.max_ponder_steps = 1
         self.model = R2IEModel(config)
         self.use_condensation = use_condensation
         self.use_governor = use_governor
         self.use_fast_weights = use_fast_weights
+        self.use_hdq = use_hdq
+        self.use_dtf = use_dtf
+        self.use_dtf_v2 = use_dtf_v2
+        self.use_dtf_v3 = use_dtf_v3
+        self.vq_mode = vq_mode
 
         self.condensation = (
-            CondensationLoop(config.d_model) if use_condensation else None
+            make_condensation_loop(
+                config.d_model,
+                use_hdq=use_hdq,
+                decay=config.hdq_decay,
+                clamp=config.hdq_clamp,
+            )
+            if use_condensation
+            else None
         )
         self.governor = VelocityGovernor() if use_governor else None
 
@@ -118,6 +145,9 @@ class R2IEEngine:
                 "use_condensation": self.use_condensation,
                 "use_governor": self.use_governor,
                 "use_fast_weights": self.use_fast_weights,
+                "use_hdq": self.use_hdq,
+                "use_dtf": self.use_dtf,
+                "vq_mode": self.vq_mode,
             },
             path,
         )
@@ -126,3 +156,9 @@ class R2IEEngine:
         ckpt = torch.load(path, map_location=device, weights_only=False)
         self.validate_checkpoint(ModelConfig(**ckpt["config"]))
         self.model.load_state_dict(ckpt["model_state"])
+        self.use_condensation = ckpt.get("use_condensation", False)
+        self.use_governor = ckpt.get("use_governor", False)
+        self.use_fast_weights = ckpt.get("use_fast_weights", False)
+        self.use_hdq = ckpt.get("use_hdq", False)
+        self.use_dtf = ckpt.get("use_dtf", False)
+        self.vq_mode = ckpt.get("vq_mode", "hard")

@@ -13,6 +13,7 @@ import torch.nn as nn
 
 from .act_field import ACTField
 from .config import ModelConfig
+from .dtf_field import DTFBlock, DTFBlockV2, DTFBlockV3
 from .fast_weight_loop import FastWeightMemory
 from .output_head import OutputHead
 from .vq_compressor import VQCompressor
@@ -27,7 +28,8 @@ class R2IEModel(nn.Module):
 
         self.embedding = nn.Embedding(config.vocab_size, config.d_model)
         self.vq = VQCompressor(
-            config.d_model, config.codebook_size, config.commitment_cost
+            config.d_model, config.codebook_size, config.commitment_cost,
+            mode=getattr(config, "vq_mode", "hard"),
         )
         self.pos_embed = nn.Parameter(
             torch.zeros(1, config.max_seq_len, config.d_model)
@@ -48,6 +50,34 @@ class R2IEModel(nn.Module):
             lr_fast=config.fast_weight_lr,
             clamp=config.fast_weight_clamp,
         )
+
+        # DTF Transformation Field (RALE.docx Loop 2): a stack of trainable
+        # graph-diffusion blocks applied over token positions. Inserted after
+        # the ACT-wrapped transformer blocks so diffusion mixes the attended
+        # representations. Disabled by default (config.use_dtf).
+        self.use_dtf = config.use_dtf
+        if self.use_dtf:
+            use_v3 = getattr(config, "dtf_v3", False)
+            use_v2 = getattr(config, "dtf_v2", False)
+            if use_v3:
+                blk = DTFBlockV3
+            elif use_v2:
+                blk = DTFBlockV2
+            else:
+                blk = DTFBlock
+            self.dtf_blocks = nn.ModuleList(
+                [
+                    blk(
+                        config.d_model,
+                        config.dtf_d_ff,
+                        c_max=config.dtf_c_max,
+                        **({"beta_max": getattr(config, "dtf_beta_max", 1.0)} if (use_v2 or use_v3) else {}),
+                    )
+                    for _ in range(config.n_layers)
+                ]
+            )
+        else:
+            self.dtf_blocks = None
 
         nn.init.normal_(self.pos_embed, mean=0.0, std=0.02)
 
@@ -80,6 +110,11 @@ class R2IEModel(nn.Module):
         # Causal mask so generation stays autoregressive.
         causal = torch.triu(torch.ones(t, t, device=idx.device), diagonal=1).bool()
         x, ponder_cost, steps = self.act_field(x, attn_mask=causal)
+
+        # DTF Transformation Field: learned graph-diffusion over positions.
+        if self.use_dtf and self.dtf_blocks is not None:
+            for blk in self.dtf_blocks:
+                x = blk(x)
 
         fast_modulation = None
         if use_fast_weights:

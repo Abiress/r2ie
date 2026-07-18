@@ -9,6 +9,10 @@ dist/
 *.egg-info/
 .eggs/
 
+# Compiled C++ extension (built at install time, platform-specific)
+*.so
+src/r2ie/_r2ie_cpp*.so
+
 # Virtual environments
 .venv/
 venv/

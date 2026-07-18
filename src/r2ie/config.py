@@ -17,6 +17,7 @@ class ModelConfig:
     # VQ "Mass Compressor" (van den Oord et al., 2017)
     codebook_size: int = 128
     commitment_cost: float = 0.25
+    vq_mode: str = "hard"  # "hard" (true bottleneck) or "soft" (info-preserving)
 
     # ACT "Transformation Field" (Graves, 2016)
     max_ponder_steps: int = 4
@@ -29,6 +30,21 @@ class ModelConfig:
     fast_weight_decay: float = 0.9
     fast_weight_lr: float = 0.1
     fast_weight_clamp: float = 5.0
+
+    # DTF Transformation Field (RALE.docx Loop 2): trainable graph-diffusion
+    # applied over token positions inside each transformation-field layer.
+    use_dtf: bool = False
+    dtf_v2: bool = False
+    dtf_v3: bool = False
+    dtf_c_max: float = 0.5
+    dtf_d_ff: int = 256
+    dtf_beta_max: float = 1.0
+
+    # HDQ Mass Memory (RALE.docx Loop 1): double-buffered C++ mass manager used
+    # by the Condensation Loop. Falls back to pure Python if C++ ext missing.
+    use_hdq: bool = False
+    hdq_decay: float = 0.95
+    hdq_clamp: float = 5.0
 
     # CPL output head
     temperature: float = 1.0

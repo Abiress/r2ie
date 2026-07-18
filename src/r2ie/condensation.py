@@ -20,6 +20,8 @@ consolidation phase), never silently during the backprop-trained forward pass.
 import torch
 import torch.nn as nn
 
+from .hdq_bridge import HDQBridge
+
 
 class MassState(nn.Module):
     """A single mass buffer (the 'm' in the accretion rule)."""
@@ -100,3 +102,61 @@ class CondensationLoop(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.modulate(x)
+
+
+class HDQCondensationLoop(nn.Module):
+    """Condensation Loop backed by the C++ HDQ mass-memory manager.
+
+    Same accretion rule as CondensationLoop, but the persistent mass buffer is
+    the lock-free, double-buffered C++ HDQMemoryManager (RALE.docx Loop 1)
+    exposed through r2ie.hdq_bridge.HDQBridge. When the C++ extension is not
+    built, HDQBridge transparently falls back to the pure-Python MassState.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        alpha: float = 0.05,
+        decay: float = 0.95,
+        clamp: float = 5.0,
+        use_cpp: bool = True,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.alpha = alpha
+        self.decay = decay
+        self.clamp = clamp
+        # HDQBridge holds the persistent mass (C++ backed, or Python fallback).
+        self.hdq = HDQBridge(dim, decay=decay, clamp=clamp, use_cpp=use_cpp)
+
+    @torch.no_grad()
+    def consolidate(self, energy: torch.Tensor, c_squared: float) -> None:
+        if c_squared <= 0.0:
+            c_squared = 1.0
+        e = energy.reshape(-1, self.dim).mean(dim=0)
+        delta = self.alpha * (e / c_squared)
+        self.hdq.apply(delta)
+
+    def swap(self) -> None:
+        # C++ HDQ already flips active/background atomically on apply().
+        pass
+
+    def reset(self) -> None:
+        self.hdq.reset()
+
+    def modulate(self, x: torch.Tensor) -> torch.Tensor:
+        return self.hdq.modulate(x)
+
+    @property
+    def mass_norm(self) -> float:
+        return self.hdq.norm()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.modulate(x)
+
+
+def make_condensation_loop(dim: int, use_hdq: bool = False, **kwargs) -> nn.Module:
+    """Factory: HDQ-backed loop when use_hdq, else the pure-Python loop."""
+    if use_hdq:
+        return HDQCondensationLoop(dim, use_cpp=True, **kwargs)
+    return CondensationLoop(dim, **kwargs)
