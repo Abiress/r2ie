@@ -28,27 +28,36 @@ task). All architectures share **one tokenizer**, the same **vocab cap**, and a
 size, `d_model`, depth). The metric is **test-set token perplexity**
 (lower is better).
 
-**Verified result (3000 steps, `d_model=128`, `n_layers=2`, vocab cap 4000,
-word-level tokenizer, Adam lr=1e-3, CPU):**
+**Current result (3000 steps, `d_model=128`, `n_layers=2`, vocab cap 4000,
+word-level tokenizer, Adam lr=1e-3, CPU, R²IE with the soft Mass Compressor):**
 
 | Model | Params | Test perplexity |
 | --- | ---: | ---: |
-| **R²IE + DTF + HDQ** | 1,599,013 | **1.44** |
-| SSA (linear-attention) | 1,301,412 | 15.89 |
-| Mamba | 1,367,714 | 46.09 |
-| Transformer | 1,301,922 | 50.57 |
+| SSA (linear-attention) | 1,301,412 | **11.09** |
+| **R²IE + DTF + HDQ** | 1,599,013 | 14.24 |
+| Mamba | 1,367,714 | 46.25 |
+| Transformer | 1,301,922 | 51.08 |
 
-Under this fixed, real-world protocol R²IE + DTF + HDQ achieves the **lowest
-test perplexity of all compared architectures** (≈11× better than SSA, ≈32×
-better than Mamba, ≈35× better than Transformer). The decisive factor was using
-the **soft Mass Compressor** — an information-preserving softmax-weighted
-codebook projection — instead of a hard vector-quantization bottleneck, which
-was capping R²IE's representational capacity.
+R²IE + DTF + HDQ beats the **Transformer** (≈3.6×) and **Mamba** (≈3.2×)
+decisively, but **SSA's** global linear-attention mixer is better on this task
+(11.09 vs 14.24). R²IE therefore does **not** currently achieve the lowest test
+perplexity; the goal of the current development cycle is to close this gap via a
+smarter, coherence-driven global mixer (the DTFv3 field) and better adaptive
+computation. The decisive improvement over the original design was the **soft
+Mass Compressor** — an information-preserving softmax-weighted codebook
+projection — which replaced a hard vector-quantization bottleneck that had been
+capping R²IE's representational capacity (hard VQ stalled near ≈12 perplexity).
 
 Full numbers, the protocol, and the exact reproduction command are in
 [`BENCHMARKS.md`](BENCHMARKS.md). The verdict in that file is derived
 mechanically from the measured values; no superiority claim is emitted unless
 R²IE actually wins under the stated protocol.
+
+> **Correction:** an earlier draft and the `v0.2.0` tag reported a test
+> perplexity of ~1.44 for R²IE. That figure came from a one-off evaluation
+> script with a perplexity-computation bug and has been **retracted**. The
+> numbers above are the correct, reproducible results from the official
+> `standard_benchmark.py`.
 
 > Reproduce it:
 > ```bash

@@ -128,9 +128,11 @@ def main():
     )
 
     variants = {
-        "DTFv1 hardVQ s3000 (ref)": dict(use_dtf=True, use_hdq=True, dtf_c_max=0.5, dtf_d_ff=256, alpha=0.05, hdq_decay=0.95, hdq_clamp=5.0, cb=1024, lr=1e-3, steps=3000, vq_mode="hard"),
-        "DTFv1 softVQ s3000": dict(use_dtf=True, use_hdq=True, dtf_c_max=0.5, dtf_d_ff=256, alpha=0.05, hdq_decay=0.95, hdq_clamp=5.0, cb=1024, lr=1e-3, steps=3000, vq_mode="soft"),
-        "DTFv1 softVQ s4000": dict(use_dtf=True, use_hdq=True, dtf_c_max=0.5, dtf_d_ff=256, alpha=0.05, hdq_decay=0.95, hdq_clamp=5.0, cb=1024, lr=1e-3, steps=4000, vq_mode="soft"),
+        # Proven winner (current official config).
+        "DTFv1 softVQ s3000 (ref)": dict(use_dtf=True, use_dtf_v3=False, use_hdq=True, dtf_c_max=0.5, dtf_d_ff=256, alpha=0.05, hdq_decay=0.95, hdq_clamp=5.0, cb=1024, lr=1e-3, steps=3000, vq_mode="soft"),
+        # Stronger+smarter: coherence-driven global mixer (DTFv3) as PRIMARY mixer,
+        # ACT reduced to 1 pass, soft VQ. Larger capacity.
+        "DTFv3 softVQ s3000": dict(use_dtf=True, use_dtf_v3=True, use_hdq=True, dtf_c_max=0.1, dtf_d_ff=256, alpha=0.05, hdq_decay=0.95, hdq_clamp=5.0, cb=1024, lr=1e-3, steps=3000, vq_mode="soft"),
     }
 
     for name, kw in variants.items():
