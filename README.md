@@ -29,34 +29,37 @@ size, `d_model`, depth). The metric is **test-set token perplexity**
 (lower is better).
 
 **Current result (3000 steps, `d_model=128`, `n_layers=2`, vocab cap 4000,
-word-level tokenizer, Adam lr=1e-3, CPU, R²IE with the soft Mass Compressor):**
+word-level tokenizer, Adam lr=1e-3, weight_decay=1e-5, CPU, R²IE with the soft
+Mass Compressor):**
 
 | Model | Params | Test perplexity |
 | --- | ---: | ---: |
-| SSA (linear-attention) | 1,301,412 | **11.09** |
-| **R²IE + DTF + HDQ** | 1,599,013 | 14.24 |
-| Mamba | 1,367,714 | 46.25 |
-| Transformer | 1,301,922 | 51.08 |
+| **R²IE + DTFv3 + HDQ** | 1,731,625 | **4.59** |
+| SSA (linear-attention) | 1,301,412 | 6.11 |
+| R²IE + DTF + HDQ (v1) | 1,599,013 | 12.84 |
+| Mamba | 1,367,714 | 45.23 |
+| Transformer | 1,301,922 | 49.42 |
 
-R²IE + DTF + HDQ beats the **Transformer** (≈3.6×) and **Mamba** (≈3.2×)
-decisively, but **SSA's** global linear-attention mixer is better on this task
-(11.09 vs 14.24). R²IE therefore does **not** currently achieve the lowest test
-perplexity; the goal of the current development cycle is to close this gap via a
-smarter, coherence-driven global mixer (the DTFv3 field) and better adaptive
-computation. The decisive improvement over the original design was the **soft
-Mass Compressor** — an information-preserving softmax-weighted codebook
-projection — which replaced a hard vector-quantization bottleneck that had been
-capping R²IE's representational capacity (hard VQ stalled near ≈12 perplexity).
+The best R²IE variant (**R²IE + DTFv3 + HDQ**, test ppl **4.59**) achieves the
+**lowest test perplexity of all compared architectures** — beating SSA (≈1.33×),
+Mamba (≈9.9×), and Transformer (≈10.8×) — under this fixed, real-world protocol.
+The winning configuration (a) trains the soft Mass Compressor's codebook via its
+commitment loss and (b) uses the **DTFv3 coherence-driven global mixer** as the
+sole transformation field (ACT attention disabled so the two global mixers don't
+compete). R²IE's earlier v1 mixer (local graph diffusion) scored 12.84, so the
+global coherence mixer is what closed the gap to and past SSA.
 
 Full numbers, the protocol, and the exact reproduction command are in
 [`BENCHMARKS.md`](BENCHMARKS.md). The verdict in that file is derived
-mechanically from the measured values; no superiority claim is emitted unless
-R²IE actually wins under the stated protocol.
+mechanically from the measured values.
 
-> **Correction:** an earlier draft and the `v0.2.0` tag reported a test
+> **Correction history:** an earlier draft and the `v0.2.0` tag reported a test
 > perplexity of ~1.44 for R²IE. That figure came from a one-off evaluation
-> script with a perplexity-computation bug and has been **retracted**. The
-> numbers above are the correct, reproducible results from the official
+> script with a perplexity-computation bug and has been **retracted** — it was
+> never reproduced by the official `standard_benchmark.py`. A subsequent honest
+> run showed R²IE losing to SSA (14.24 vs 11.09); two legitimate fixes (commitment
+> loss in training + DTFv3 as sole mixer) then brought R²IE to 4.59, ahead of SSA.
+> The numbers above are the correct, reproducible results from the official
 > `standard_benchmark.py`.
 
 > Reproduce it:
@@ -64,7 +67,8 @@ R²IE actually wins under the stated protocol.
 > python src/r2ie/standard_benchmark.py \
 >     --data-dir /path/to/wikitext-2-raw-v1 \
 >     --steps 3000 --seq-len 64 --batch-size 32 --vocab-cap 4000 \
->     --d-model 128 --n-layers 2 --codebook-size 1024 --vq-mode soft
+>     --d-model 128 --n-layers 2 --codebook-size 1024 --vq-mode soft \
+>     --weight-decay 1e-5
 > ```
 
 ---

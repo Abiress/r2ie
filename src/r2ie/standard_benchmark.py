@@ -128,12 +128,16 @@ def _param_count(model) -> int:
     return sum(p.numel() for p in model.parameters())
 
 
-def _train(model, loader, steps, device, lr, clip=1.0):
+def _train(model, loader, steps, device, lr, clip=1.0, weight_decay=0.0,
+           lr_decay_step=0, lr_decay_gamma=0.3):
     model.to(device).train()
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     it = iter(loader)
     ce_hist = []
     for step in range(1, steps + 1):
+        if lr_decay_step and step == lr_decay_step:
+            for g in opt.param_groups:
+                g["lr"] *= lr_decay_gamma
         try:
             x, y = next(it)
         except StopIteration:
@@ -144,7 +148,16 @@ def _train(model, loader, steps, device, lr, clip=1.0):
         out = model(x)
         logits = out[0] if isinstance(out, tuple) else out
         ce = nn.functional.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
-        ce.backward()
+        # R2IE returns a commitment/VQ loss in aux; include it so the codebook
+        # is trained (otherwise the soft compressor drifts and overfits).
+        if isinstance(out, tuple) and len(out) > 1 and isinstance(out[1], dict):
+            commit = out[1].get("commitment_loss", None)
+            if commit is not None and torch.is_tensor(commit) and commit.requires_grad:
+                (ce + 0.25 * commit).backward()
+            else:
+                ce.backward()
+        else:
+            ce.backward()
         nn.utils.clip_grad_norm_(model.parameters(), clip)
         opt.step()
         ce_hist.append(ce.item())
@@ -230,7 +243,10 @@ def run_benchmark(args) -> str:
         torch.manual_seed(args.seed)
         model = factory()
         t0 = time.time()
-        train_ce = _train(model, train_loader, args.steps, device, args.lr)
+        train_ce = _train(model, train_loader, args.steps, device, args.lr,
+                          weight_decay=args.weight_decay,
+                          lr_decay_step=args.lr_decay_step,
+                          lr_decay_gamma=args.lr_decay_gamma)
         val_ppl = _eval_perplexity(model, valid_loader, device, args.eval_batches)
         test_ppl = _eval_perplexity(model, test_loader, device, args.eval_batches)
         dt = time.time() - t0
@@ -266,6 +282,9 @@ def run_benchmark(args) -> str:
         f"steps={args.steps}, seq_len={args.seq_len}, batch={args.batch_size}, "
         f"lr={args.lr}, d_model={args.d_model}, n_layers={args.n_layers}, "
         f"vq_mode={args.vq_mode}, eval_batches={args.eval_batches}, device={device}.",
+        "",
+        *([f"> Regularization: weight_decay={args.weight_decay}, "
+           f"lr_decay_step={args.lr_decay_step} (x{args.lr_decay_gamma})."] if (args.weight_decay or args.lr_decay_step) else []),
         "",
         "**Metric: test-set token perplexity (lower is better).**",
         "",
@@ -332,6 +351,12 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--device", type=str, default="auto")
     ap.add_argument("--out", type=str, default=None)
+    ap.add_argument("--weight-decay", type=float, default=1e-5,
+                    help="Adam weight decay (stabilizes R2IE training; the soft "
+                         "compressor + DTFv3 config was tuned with 1e-5).")
+    ap.add_argument("--lr-decay-step", type=int, default=0,
+                    help="Step at which to multiply lr by --lr-decay-gamma (0=off).")
+    ap.add_argument("--lr-decay-gamma", type=float, default=0.3)
     args = ap.parse_args()
     run_benchmark(args)
 

@@ -42,10 +42,12 @@ class R2IEEngine:
         config.use_dtf_v3 = use_dtf_v3
         config.use_hdq = use_hdq
         config.vq_mode = vq_mode
-        # When DTFv3 is the primary mixer, reduce the ACT field to a single
-        # pass so the two global mixers don't compete for gradient signal.
+        # When DTFv3 is the primary mixer, disable the ACT attention field
+        # entirely so the global coherence mixer is the sole transformation
+        # field (no double-mixer gradient conflict), and cap ponder at 1.
         if use_dtf_v3:
             config.max_ponder_steps = 1
+            config.act_attention = False
         self.model = R2IEModel(config)
         self.use_condensation = use_condensation
         self.use_governor = use_governor

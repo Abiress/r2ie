@@ -108,8 +108,11 @@ class R2IEModel(nn.Module):
 
         # Transformation Field: ACT-wrapped transformer blocks.
         # Causal mask so generation stays autoregressive.
-        causal = torch.triu(torch.ones(t, t, device=idx.device), diagonal=1).bool()
-        x, ponder_cost, steps = self.act_field(x, attn_mask=causal)
+        ponder_cost = torch.zeros((), device=x.device)
+        steps = 1
+        if getattr(self.config, "act_attention", True):
+            causal = torch.triu(torch.ones(t, t, device=idx.device), diagonal=1).bool()
+            x, ponder_cost, steps = self.act_field(x, attn_mask=causal)
 
         # DTF Transformation Field: learned graph-diffusion over positions.
         if self.use_dtf and self.dtf_blocks is not None:

@@ -39,6 +39,10 @@ class ModelConfig:
     dtf_c_max: float = 0.5
     dtf_d_ff: int = 256
     dtf_beta_max: float = 1.0
+    # When True the ACT multi-head attention field is skipped and the DTF
+    # graph-diffusion blocks act as the sole transformation field. Used to let
+    # the global DTFv3 coherence mixer run without a competing attention mixer.
+    act_attention: bool = True
 
     # HDQ Mass Memory (RALE.docx Loop 1): double-buffered C++ mass manager used
     # by the Condensation Loop. Falls back to pure Python if C++ ext missing.
