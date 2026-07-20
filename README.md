@@ -44,12 +44,18 @@ soft Mass Compressor):**
 > learning rate and a single early checkpoint (step 3000) R²IE happened to edge
 > out SSA (4.59 vs 6.11). A fuller study (per-architecture LR sweep
 > {5e-4, 1e-3, 2e-3} + 8000-step trajectory, see
-> [`BENCHMARKS.md`](BENCHMARKS.md) → "Extended study") shows **SSA dominates the
-> entire range** and reaches ~1.1 test perplexity by step 8000 while R²IE
-> plateaus near 4.1. The claim that "R²IE achieves the lowest test perplexity" is
-> therefore **retracted** — SSA is the strongest architecture on this task under
-> fair tuning. Full numbers, the protocol, the trajectory tables, and the
-> correction are in [`BENCHMARKS.md`](BENCHMARKS.md).
+> [`BENCHMARKS.md`](BENCHMARKS.md) → "Extended study") showed SSA reaching ~1.1
+> test perplexity by step 8000 while R²IE (with the *original* hyperparams:
+> codebook=1024, weight_decay=1e-5) plateaued near 4.1. The claim that "R²IE
+> achieves the lowest test perplexity" is therefore **retracted**. A subsequent
+> **diagnostic** (see "Diagnostic follow-up" in BENCHMARKS.md) found those R²IE
+> hyperparams were suboptimal: with codebook=2048, no weight decay, and lr=1e-3,
+> R²IE reaches **1.84 at 15000 steps and is still improving** — i.e. R²IE is
+> *competitive with* SSA, not decisively behind. At a matched 8000-step budget
+> SSA (1.11) still beats R²IE (2.18), so "SSA is strongest at 8000 steps" holds,
+> but the long-horizon ordering is not settled. **No "R²IE outperforms SSA"
+> claim is made.** Full numbers and corrections are in
+> [`BENCHMARKS.md`](BENCHMARKS.md).
 
 Full numbers, the protocol, and the exact reproduction command are in
 [`BENCHMARKS.md`](BENCHMARKS.md). The verdict in that file is derived

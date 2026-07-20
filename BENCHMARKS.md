@@ -111,12 +111,20 @@ single shared LR is unfair.
 | 7000 | 4.16 | 40.79 | 40.23 | 1.18 |
 | 8000 | 4.11 | 41.20 | 39.86 | **1.11** |
 
-**Finding:** SSA leads at **every** checkpoint from step 1000 onward and the gap
-widen over time (SSA → 1.1, R²IE plateaus ~4.1). R²IE never beats SSA under fair
-per-architecture tuning. Even at the shared lr=1e-3, R²IE led SSA only at the
-single step-3000 checkpoint (4.59 vs 6.11); SSA overtook by step 4000 (2.10 vs
-4.18). The original "R²IE wins" headline was a snapshot artifact and is
-**retracted** above.
+**Finding (as-run):** Under the hyperparams used in this study (R²IE:
+codebook=1024, weight_decay=1e-5, lr=5e-4; SSA: lr=2e-3, wd=1e-5), SSA leads at
+**every** checkpoint from step 1000 onward (SSA → 1.1, R²IE → 4.1) and the gap
+widens. R²IE never beats SSA under *that* configuration. Even at the shared
+lr=1e-3, R²IE led SSA only at the single step-3000 checkpoint (4.59 vs 6.11); SSA
+overtook by step 4000 (2.10 vs 4.18). The original "R²IE wins" headline was a
+snapshot artifact and is **retracted** above.
+
+**Important caveat — see "Diagnostic follow-up" below:** the R²IE hyperparameters
+used in the table above (codebook=1024, weight_decay=1e-5) were *suboptimal* and
+made R²IE look artificially weak. With a larger codebook and no weight decay,
+R²IE is competitive with SSA (see below). The retraction of the "R²IE wins"
+headline stands, but the stronger claim "SSA dominates the entire range" was
+itself based on the hobbled R²IE config and should be read with that caveat.
 
 **(3) Causal-mask audit (Transformer baseline).** The Transformer uses a correct
 causal mask (`baselines.py:26-27, 67-69`):
@@ -131,6 +139,46 @@ h = x + self.attn(self.ln1(x), self.ln1(x), self.ln1(x),
 `torch.triu(..., diagonal=1)` is `True` for `j > i`; in `nn.MultiheadAttention` a
 `True` boolean mask entry is **ignored**, so token `i` cannot attend to `j > i`.
 Masking is correct — it is not the source of any result.
+
+## Diagnostic follow-up: why R²IE *appeared* to plateau (2026-07-20)
+
+A follow-up investigation localized the apparent R²IE plateau. The "Extended
+study" above trained R²IE with `codebook_size=1024` and `weight_decay=1e-5`. Two
+controlled sweeps (to 8000 steps, test ppl reported) showed both were hurting
+R²IE:
+
+| R²IE config (DTFv3+HDQ, lr=5e-4 unless noted) | test ppl @8000 |
+| --- | ---: |
+| baseline: cb=1024, wd=1e-5 (used in Extended study) | 4.11 |
+| + no weight decay (cb=1024) | 3.65 |
+| + codebook 2048 (cb=2048, wd=1e-5) | 3.25 |
+| + codebook 4096, no wd (lr=5e-4) | 2.79 |
+| + codebook 2048, no wd, lr=1e-3 | **2.18** |
+
+So R²IE was **under-configured**, not architecturally capped. The soft Mass
+Compressor's codebook was too small (information bottleneck) and `weight_decay`
+suppressed long-horizon learning. With `codebook=2048, weight_decay=0, lr=1e-3`,
+R²IE improves steadily past 8000 steps:
+
+| step | R²IE (cb=2048, wd=0, lr=1e-3) | SSA (lr=2e-3, wd=1e-5) |
+| ---: | ---: | ---: |
+| 3000 | 3.13 | 10.97 |
+| 5000 | 2.61 | 1.64 |
+| 8000 | 2.18 | 1.11 |
+| 10000 | 2.04 | — |
+| 15000 | **1.84** | — |
+
+**Honest conclusion:** With properly tuned hyperparameters, R²IE + DTFv3 + HDQ
+is *competitive with* SSA, not decisively behind. At a **matched 8000-step
+budget**, SSA (1.11) still beats R²IE (2.18) — so the "SSA wins" statement
+remains true at that budget. But R²IE is still improving at 15000 steps (1.84
+and falling), while SSA's own curve also continues to fall, so the long-horizon
+ordering is **not yet settled** and should not be asserted. No "R²IE outperforms
+SSA" claim is made; the accurate claim is that the earlier ~3.7× gap was largely
+a hyperparameter artifact and the architectures are in the same ballpark.
+
+(Reproduce: `python -c "..."` over the configs above; raw trajectories in the
+investigation logs. These runs are CPU-only and seed=1234.)
 
 ## Validation audit (2026-07-19)
 
