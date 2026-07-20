@@ -60,9 +60,13 @@ jobs:
             --data-dir "${WIKITEXT_DIR:-data/wikitext-2-raw}" || true
         env:
           WIKITEXT_DIR: ${{ vars.WIKITEXT_DIR }}
-      - name: Upload BENCHMARKS.md
+      - name: Upload benchmark snapshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmarks
-          path: BENCHMARKS.md
+          name: benchmark-snapshot
+          # NOTE: BENCHMARK_SNAPSHOT.md is a single-LR snapshot (raw data only,
+          # explicitly NON-authoritative). The corrected, fair result lives in
+          # BENCHMARKS.md and is committed to the repo; it is NOT regenerated
+          # here so CI cannot re-assert a retracted claim.
+          path: BENCHMARK_SNAPSHOT.md

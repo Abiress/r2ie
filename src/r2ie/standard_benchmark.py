@@ -275,13 +275,23 @@ def run_benchmark(args) -> str:
     lines = [
         "# Standard Real-World Benchmark (WikiText-2)",
         "",
-        "> This is the official pre-release benchmark gate. It uses the canonical "
-        "**WikiText-2** corpus (the same data as EleutherAI's lm-evaluation-harness "
-        "wikitext perplexity task). All architectures share one tokenizer, vocab "
+        "> This is a **single-learning-rate snapshot** of the WikiText-2 benchmark. "
+        "It uses the canonical **WikiText-2** corpus (the same data as "
+        "EleutherAI's lm-evaluation-harness wikitext perplexity task). All "
+        "architectures share one tokenizer, vocab "
         f"cap ({args.vocab_cap}), and a fixed protocol: seed={args.seed}, "
         f"steps={args.steps}, seq_len={args.seq_len}, batch={args.batch_size}, "
-        f"lr={args.lr}, d_model={args.d_model}, n_layers={args.n_layers}, "
-        f"vq_mode={args.vq_mode}, eval_batches={args.eval_batches}, device={device}.",
+        f"lr={args.lr} (SINGLE SHARED LR — see caveat below), d_model={args.d_model}, "
+        f"n_layers={args.n_layers}, vq_mode={args.vq_mode}, "
+        f"eval_batches={args.eval_batches}, device={device}.",
+        "",
+        "> **CAVEAT — not the authoritative result.** A single shared learning rate "
+        "is unfair: per-architecture tuning (LR sweep {5e-4, 1e-3, 2e-3}) shows each "
+        "model has a different best LR, and under fair tuning **SSA wins the full "
+        "training range** (see the \"Extended study\" section in BENCHMARKS.md). "
+        "This snapshot can therefore NOT be used to claim R2IE outperforms the "
+        "baselines. The 4.59-vs-6.11 step-3000 result below is a known "
+        "single-checkpoint artifact. Treat this file as raw data only.",
         "",
         *([f"> Regularization: weight_decay={args.weight_decay}, "
            f"lr_decay_step={args.lr_decay_step} (x{args.lr_decay_gamma})."] if (args.weight_decay or args.lr_decay_step) else []),
@@ -299,26 +309,25 @@ def run_benchmark(args) -> str:
         f"**Best test perplexity: {best[0]} ({best[4]}).**",
         "",
     ]
-    if r2ie_wins:
-        lines.append(
-            f"> **VERDICT:** Under this fixed, real-world protocol, the best R2IE "
-            f"variant ({r2ie_best[0]}, test ppl {r2ie_best[4]}) achieves the lowest "
-            f"test perplexity among all compared architectures. This is a measured "
-            f"result on WikiText-2, not a claim extrapolated from other tasks."
-        )
-    else:
-        lines.append(
-            f"> **VERDICT:** Under this fixed, real-world protocol, R2IE did NOT "
-            f"achieve the lowest test perplexity. Best is {best[0]} ({best[4]}); "
-            f"best R2IE variant is {r2ie_best[0]} ({r2ie_best[4]}). No superiority "
-            f"claim is made. Report the raw numbers above and investigate before "
-            f"any 'outperforms' statement."
-        )
+    lines.append(
+        f"> **SNAPSHOT ONLY — NO SUPERIORITY CLAIM.** Under this single-LR protocol, "
+        f"lowest test ppl is {best[0]} ({best[4]}); best R2IE variant is "
+        f"{r2ie_best[0]} ({r2ie_best[4]}). This does NOT establish that R2IE "
+        f"outperforms the baselines — see the \"Extended study\" section in "
+        f"BENCHMARKS.md for the fair, per-architecture-tuned result (SSA wins)."
+    )
     lines.append("")
 
     md = "\n".join(lines)
+    # NOTE: This script runs a SINGLE shared learning rate across all
+    # architectures, which (per the extended study in BENCHMARKS.md) is unfair:
+    # each architecture has a different best LR (R2IE 5e-4, others 2e-3). The
+    # authoritative, fair result lives in BENCHMARKS.md ("Extended study"
+    # section), NOT in this snapshot. We therefore write to a separate file and
+    # never clobber BENCHMARKS.md, so running this script cannot re-assert a
+    # retracted claim.
     out_path = args.out or os.path.join(
-        os.path.dirname(__file__), "..", "..", "BENCHMARKS.md"
+        os.path.dirname(__file__), "..", "..", "BENCHMARK_SNAPSHOT.md"
     )
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(md)
