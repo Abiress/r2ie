@@ -20,6 +20,7 @@ import torch
 
 from .config import ModelConfig
 from .data import make_dataloader
+from .devices import backend_name, resolve_device
 from .engine import R2IEEngine
 from .metrics import average_ponder_steps, perplexity
 
@@ -30,7 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Corpus source: 'tinyshakespeare', a .txt path, or 'fixture'.")
     p.add_argument("--steps", type=int, default=2000, help="Number of training steps.")
     p.add_argument("--device", type=str, default="auto",
-                   choices=["auto", "cpu", "cuda"], help="Device to train on.")
+                    help="Device to train on: 'auto', 'cpu', 'cuda' (NVIDIA+AMD/ROCm), "
+                         "'mps' (Apple), or a torch.device string like 'cuda:1'.")
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--seq-len", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-3)
@@ -64,23 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def resolve_device(device: str) -> torch.device:
-    if device == "cuda" and torch.cuda.is_available():
-        return torch.device("cuda")
-    if device == "cuda":
-        print("[warn] cuda requested but not available; falling back to cpu.")
-        return torch.device("cpu")
-    if device == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device("cpu")
-
-
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     torch.manual_seed(args.seed)
 
     device = resolve_device(args.device)
-    print(f"[info] device = {device}")
+    print(f"[info] device = {device} (backend: {backend_name(device)})")
 
     # Build data + tokenizer (vocab size derived from corpus).
     loader, tokenizer = make_dataloader(
@@ -113,6 +104,7 @@ def main(argv: list[str] | None = None) -> None:
         use_hdq=args.use_hdq,
         use_dtf=args.use_dtf,
         vq_mode=args.vq_mode,
+        device=str(device),
     ).to(device)
     optimizer = torch.optim.Adam(engine.model.parameters(), lr=args.lr)
 

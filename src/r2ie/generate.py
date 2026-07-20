@@ -15,6 +15,7 @@ import torch
 
 from .config import ModelConfig
 from .data import CharTokenizer
+from .devices import backend_name, resolve_device
 from .engine import R2IEEngine
 from .errors import EmptyPromptError
 
@@ -28,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-tokens", type=int, default=200)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--device", type=str, default="auto",
-                   choices=["auto", "cpu", "cuda"])
+                    help="Device: 'auto', 'cpu', 'cuda' (NVIDIA+AMD/ROCm), 'mps' (Apple).")
     p.add_argument("--use-fast-weights", action="store_true",
                    help="Enable the fast-weight modulation at inference time.")
     p.add_argument("--use-condensation", action="store_true",
@@ -44,16 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def resolve_device(device: str) -> torch.device:
-    if device == "cuda" and torch.cuda.is_available():
-        return torch.device("cuda")
-    if device == "cuda":
-        return torch.device("cpu")
-    if device == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device("cpu")
-
-
 def _load_tokenizer(checkpoint_path: str, ckpt: dict, device: str) -> CharTokenizer:
     if "tokenizer_chars" in ckpt:
         chars = ckpt["tokenizer_chars"]
@@ -67,6 +58,7 @@ def _load_tokenizer(checkpoint_path: str, ckpt: dict, device: str) -> CharTokeni
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     device = resolve_device(args.device)
+    print(f"[info] device = {device} (backend: {backend_name(device)})")
 
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     config = ModelConfig(**ckpt["config"])
@@ -88,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         use_hdq=use_hdq,
         use_dtf=use_dtf,
         vq_mode=vq_mode,
+        device=str(device),
     ).to(device)
     engine.model.load_state_dict(ckpt["model_state"])
     engine.model.eval()

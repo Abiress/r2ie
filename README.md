@@ -1,6 +1,7 @@
 # R²IE — Recursive Relativistic Information Engine
 
-> **Status: research prototype with a verified architecture benchmark.**
+> **Status: research prototype with a verified architecture benchmark and a
+> vendor-agnostic training path.**
 > R²IE is a small, experimental architecture combining a compressive "Mass
 > Compressor", an adaptive-compute "Transformation Field", and a bounded
 > Hebbian "Condensation Loop", composed with a trainable graph-diffusion
@@ -8,6 +9,12 @@
 > manager (the **HDQ** buffer). It is built to be read, modified, and learned
 > from — and its performance claims are backed by a real, repeatable benchmark
 > (see [Benchmark](#benchmark-real-world-wikitext-2)).
+>
+> **Portability:** one PyTorch codebase runs on NVIDIA CUDA, AMD ROCm, Apple MPS,
+> and CPU (`src/r2ie/devices.py`); an FSDP/DDP seam for larger-scale training
+> lives in `src/r2ie/dist_utils.py`. The C++ HDQ ext is CPU-only and falls back
+> to pure Python elsewhere. GPU/multi-GPU paths are implemented but were only
+> runtime-verified on CPU here.
 
 The conceptual starting point is an original idea by **Abir Maheshwari**: a
 mass–energy-equivalence metaphor (`E = m c²`) mapped onto an AI architecture —

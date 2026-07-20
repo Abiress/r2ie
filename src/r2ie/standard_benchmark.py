@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from r2ie.baselines import MambaBaseline, SSABaseline, TransformerBaseline  # noqa: E402
 from r2ie.config import ModelConfig  # noqa: E402
+from r2ie.devices import backend_name, resolve_device  # noqa: E402
 from r2ie.engine import R2IEEngine  # noqa: E402
 
 # Default location of the real-world WikiText-2 raw corpus. Override with
@@ -114,11 +115,11 @@ class WordDataset(torch.utils.data.Dataset):
 
 def _build_r2ie(cfg: ModelConfig, use_dtf: bool, use_hdq: bool, codebook_size: int = 128,
                 use_dtf_v2: bool = False, use_dtf_v3: bool = False,
-                vq_mode: str = "hard") -> nn.Module:
+                vq_mode: str = "hard", device: str = "cpu") -> nn.Module:
     cfg = ModelConfig(**{**vars(cfg), "codebook_size": codebook_size,
                          "dtf_v2": use_dtf_v2, "dtf_v3": use_dtf_v3, "vq_mode": vq_mode})
     eng = R2IEEngine(cfg, use_condensation=True, use_hdq=use_hdq, use_dtf=use_dtf,
-                     use_dtf_v2=use_dtf_v2, use_dtf_v3=use_dtf_v3)
+                     use_dtf_v2=use_dtf_v2, use_dtf_v3=use_dtf_v3, device=device)
     return eng.model
 
 
@@ -189,11 +190,7 @@ def _eval_perplexity(model, loader, device, max_batches: int = 500):
 
 
 def run_benchmark(args) -> str:
-    device = (
-        torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if args.device == "auto"
-        else torch.device(args.device)
-    )
+    device = resolve_device(args.device)
     # Deterministic protocol.
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -203,7 +200,7 @@ def run_benchmark(args) -> str:
     test_text = load_wikitext("test", args.data_dir)
 
     tok = WordTokenizer(train_text, vocab_cap=args.vocab_cap)
-    print(f"[std-bench] vocab={tok.vocab_size} device={device}")
+    print(f"[std-bench] vocab={tok.vocab_size} device={device} (backend: {backend_name(device)})")
 
     train_ds = WordDataset(train_text, args.seq_len, tok)
     valid_ds = WordDataset(valid_text, args.seq_len, tok)
@@ -228,10 +225,10 @@ def run_benchmark(args) -> str:
     )
 
     models = {
-        "R2IE (base)": lambda: _build_r2ie(cfg, use_dtf=False, use_hdq=False, codebook_size=args.codebook_size, vq_mode=args.vq_mode),
-        "R2IE + DTF + HDQ": lambda: _build_r2ie(cfg, use_dtf=True, use_hdq=True, codebook_size=args.codebook_size, vq_mode=args.vq_mode),
-        "R2IE + DTFv2 + HDQ": lambda: _build_r2ie(cfg, use_dtf=True, use_hdq=True, codebook_size=args.codebook_size, use_dtf_v2=True, vq_mode=args.vq_mode),
-        "R2IE + DTFv3 + HDQ": lambda: _build_r2ie(cfg, use_dtf=True, use_hdq=True, codebook_size=args.codebook_size, use_dtf_v3=True, vq_mode=args.vq_mode),
+        "R2IE (base)": lambda: _build_r2ie(cfg, use_dtf=False, use_hdq=False, codebook_size=args.codebook_size, vq_mode=args.vq_mode, device=str(device)),
+        "R2IE + DTF + HDQ": lambda: _build_r2ie(cfg, use_dtf=True, use_hdq=True, codebook_size=args.codebook_size, vq_mode=args.vq_mode, device=str(device)),
+        "R2IE + DTFv2 + HDQ": lambda: _build_r2ie(cfg, use_dtf=True, use_hdq=True, codebook_size=args.codebook_size, use_dtf_v2=True, vq_mode=args.vq_mode, device=str(device)),
+        "R2IE + DTFv3 + HDQ": lambda: _build_r2ie(cfg, use_dtf=True, use_hdq=True, codebook_size=args.codebook_size, use_dtf_v3=True, vq_mode=args.vq_mode, device=str(device)),
         "Transformer": lambda: TransformerBaseline(cfg),
         "Mamba": lambda: MambaBaseline(cfg),
         "SSA (linear-attn)": lambda: SSABaseline(cfg),
@@ -270,7 +267,6 @@ def run_benchmark(args) -> str:
     r2ie_best = min(
         r for r in rows if r[0].startswith("R2IE")
     )
-    r2ie_wins = r2ie_best[4] == best[4]
 
     lines = [
         "# Standard Real-World Benchmark (WikiText-2)",

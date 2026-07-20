@@ -155,8 +155,15 @@ class HDQCondensationLoop(nn.Module):
         return self.modulate(x)
 
 
-def make_condensation_loop(dim: int, use_hdq: bool = False, **kwargs) -> nn.Module:
-    """Factory: HDQ-backed loop when use_hdq, else the pure-Python loop."""
-    if use_hdq:
+def make_condensation_loop(dim: int, use_hdq: bool = False, device=None, **kwargs) -> nn.Module:
+    """Factory: HDQ-backed loop when use_hdq, else the pure-Python loop.
+
+    The C++ HDQ mass-memory manager is CPU-only. On a non-CPU compute device
+    (CUDA/ROCm/MPS) we transparently fall back to the pure-Python CondensationLoop
+    so all state stays on the compute device (no host/device copy per step). This
+    keeps R2IE fully portable while preserving the condensation semantics.
+    """
+    from .devices import use_cpp_hdq
+    if use_hdq and use_cpp_hdq(torch.device(device) if device is not None else torch.device("cpu")):
         return HDQCondensationLoop(dim, use_cpp=True, **kwargs)
     return CondensationLoop(dim, **kwargs)

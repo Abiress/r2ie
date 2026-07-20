@@ -34,6 +34,7 @@ class R2IEEngine:
         use_dtf_v2: bool = False,
         use_dtf_v3: bool = False,
         vq_mode: str = "hard",
+        device: str = "cpu",
     ):
         self.config = config
         # Propagate architecture flags into the config consumed by R2IEModel.
@@ -62,6 +63,7 @@ class R2IEEngine:
             make_condensation_loop(
                 config.d_model,
                 use_hdq=use_hdq,
+                device=device,
                 decay=config.hdq_decay,
                 clamp=config.hdq_clamp,
             )
