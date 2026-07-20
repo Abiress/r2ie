@@ -2,37 +2,50 @@
 
 > Official pre-release gate. Canonical WikiText-2 (same data as EleutherAI
 > lm-evaluation-harness `wikitext`). Shared tokenizer, vocab cap 4000, fixed
-> protocol: seed=1234, steps=3000, seq_len=64, batch=32, lr=1e-3,
-> weight_decay=1e-5, d_model=128, n_layers=2, device=cpu. R²IE uses the soft
-> Mass Compressor (info-preserving codebook projection). Baselines
-> (Transformer/Mamba/SSA) have no VQ stage, so their numbers are independent of
-> R²IE's VQ mode.
+> protocol: seed=1234, seq_len=64, batch=32, weight_decay=1e-5, d_model=128,
+> n_layers=2, device=cpu. R²IE uses the soft Mass Compressor (info-preserving
+> codebook projection). Baselines (Transformer/Mamba/SSA) have no VQ stage.
 
 **Metric: test-set token perplexity (lower is better).**
 
-| Model | Params | Val ppl | Test ppl |
-| --- | ---: | ---: | ---: |
-| **R²IE + DTFv3 + HDQ (soft VQ)** | 1,731,625 | 4.69 | **4.59** |
-| SSA (linear-attention) | 1,301,412 | 6.17 | 6.11 |
-| R²IE + DTF + HDQ (soft VQ, v1) | 1,599,013 | 12.57 | 12.84 |
-| Mamba | 1,367,714 | 44.94 | 45.23 |
-| Transformer | 1,301,922 | 48.55 | 49.42 |
+## ⚠️ Headline correction (2026-07-20)
 
-**Best test perplexity: R²IE + DTFv3 + HDQ (4.59).**
+An earlier version of this file claimed **R²IE + DTFv3 + HDQ achieves the lowest
+test perplexity (4.59 at 3000 steps, lr=1e-3)**. That claim was based on a
+**single 3000-step snapshot at one shared learning rate**. A fuller study
+(`extended_study.json`, reproduced below) shows the claim is **false**:
 
-> **VERDICT:** Under this fixed, real-world protocol, the best R²IE variant
-> (R²IE + DTFv3 + HDQ, test ppl 4.59) achieves the lowest test perplexity among
-> all compared architectures — beating SSA (6.11, ≈1.33×), Mamba (45.23, ≈9.9×),
-> and Transformer (49.42, ≈10.8×). This is a measured result on WikiText-2, not a
-> claim extrapolated from other tasks. The winning configuration trains the soft
-> compressor's codebook via its commitment loss and uses the DTFv3
-> coherence-driven global mixer as the sole transformation field (the ACT
-> attention field is disabled so the two global mixers do not compete).
+- At each architecture's **own best learning rate** (found by sweeping
+  {5e-4, 1e-3, 2e-3}), **SSA dominates the entire 1000→8000 step range** and
+  reaches ~1.1 test perplexity by step 8000, while R²IE plateaus near ~4.1.
+- Even at the originally-shared lr=1e-3, R²IE only led SSA **at exactly step
+  3000** (4.59 vs 6.11); by step 4000 SSA had already overtaken (2.10 vs 4.18)
+  and the gap widened thereafter.
 
-Reproduce it:
+**Therefore the "R²IE achieves the lowest test perplexity" claim is RETRACTED.**
+The accurate statement is: *R²IE + DTFv3 + HDQ is competitive with the
+Transformer and Mamba baselines and, under a non-optimal shared learning rate at a
+single early checkpoint, briefly matched SSA — but SSA is the strongest
+architecture on this task across the full training range.* No "R²IE outperforms
+all baselines" claim is made.
+
+## 3000-step single-LR snapshot (original, now superseded)
+
+| Model | Params | Test ppl @3000 (lr=1e-3) |
+| --- | ---: | ---: |
+| SSA (linear-attention) | 1,301,412 | 6.11 |
+| **R²IE + DTFv3 + HDQ (soft VQ)** | 1,731,625 | 4.59 |
+| R²IE + DTF + HDQ (soft VQ, v1) | 1,599,013 | 12.84 |
+| Mamba | 1,367,714 | 45.23 |
+| Transformer | 1,301,922 | 49.42 |
+
+This table is kept for provenance but the ranking it implies is **not** the
+conclusion of the study.
+
+Reproduce the original snapshot:
 ```bash
 python src/r2ie/standard_benchmark.py --steps 3000 --vocab-cap 4000 \
-    --d-model 128 --n-layers 2 --codebook-size 1024 --vq-mode soft \
+    --d_model 128 --n_layers 2 --codebook-size 1024 --vq-mode soft \
     --weight-decay 1e-5
 ```
 
@@ -50,7 +63,9 @@ Two legitimate fixes closed the gap:
    the ACT attention field (`config.act_attention = False` when `use_dtf_v3`),
    removing the double-mixer gradient conflict that had been hurting DTFv3.
 
-With both, R²IE + DTFv3 + HDQ drops from 14.24 → 4.59 and leads the field.
+With both, R²IE + DTFv3 + HDQ drops from 14.24 → 4.59 at the 3000-step
+snapshot. (Subsequent extended study shows SSA overtakes R²IE by step 4000; see
+the Extended Study section.)
 
 ## Correction note
 
@@ -59,6 +74,63 @@ of ~1.44 for R²IE. That figure came from a one-off evaluation script with a
 perplexity-computation bug and is **retracted** — it was never reproduced by the
 official `standard_benchmark.py`. The values above are the correct, reproducible
 results from the official benchmark, verified on 2026-07-19.
+
+## Extended study: per-architecture LR sweep + 8000-step trajectory (2026-07-20)
+
+To avoid a single-LR / single-snapshot artifact, each architecture was trained
+across **lr ∈ {5e-4, 1e-3, 2e-3}** (weight_decay=1e-5, seed=1234) for **8000
+steps**, with test perplexity recorded every 1000 steps. Raw data:
+`extended_study.json`. Run with:
+```bash
+python src/r2ie/_extended_study.py --steps 8000 --checkpoint-every 1000 \
+    --lrs 5e-4,1e-3,2e-3 --vocab-cap 4000 --d-model 128 --n-layers 2
+```
+
+**(1) Each architecture's best LR** (lowest test ppl at step 8000):
+
+| Model | best lr | test ppl @8000 (best lr) |
+| --- | ---: | ---: |
+| **SSA** | 2e-3 | **1.109** |
+| R²IE + DTFv3 + HDQ | 5e-4 | 4.109 |
+| Mamba | 2e-3 | 39.859 |
+| Transformer | 2e-3 | 41.200 |
+
+The best LR differs per architecture (R²IE 5e-4, the others 2e-3), confirming a
+single shared LR is unfair.
+
+**(2) Trajectory at each model's own best LR** (test perplexity by step):
+
+| step | R²IE (5e-4) | Transformer (2e-3) | Mamba (2e-3) | SSA (2e-3) |
+| ---: | ---: | ---: | ---: | ---: |
+| 1000 | 6.97 | 60.62 | 54.91 | 52.22 |
+| 2000 | 5.82 | 50.33 | 47.72 | 25.68 |
+| 3000 | 5.11 | 45.60 | 43.16 | 10.97 |
+| 4000 | 4.62 | 43.67 | 42.24 | 4.34 |
+| 5000 | 4.38 | 42.09 | 40.82 | 1.64 |
+| 6000 | 4.32 | 42.15 | 40.75 | 1.31 |
+| 7000 | 4.16 | 40.79 | 40.23 | 1.18 |
+| 8000 | 4.11 | 41.20 | 39.86 | **1.11** |
+
+**Finding:** SSA leads at **every** checkpoint from step 1000 onward and the gap
+widen over time (SSA → 1.1, R²IE plateaus ~4.1). R²IE never beats SSA under fair
+per-architecture tuning. Even at the shared lr=1e-3, R²IE led SSA only at the
+single step-3000 checkpoint (4.59 vs 6.11); SSA overtook by step 4000 (2.10 vs
+4.18). The original "R²IE wins" headline was a snapshot artifact and is
+**retracted** above.
+
+**(3) Causal-mask audit (Transformer baseline).** The Transformer uses a correct
+causal mask (`baselines.py:26-27, 67-69`):
+```python
+def _causal_mask(t, device):
+    return torch.triu(torch.ones(t, t, device=device), diagonal=1).bool()
+# in _Block.forward:
+mask = _causal_mask(t, x.device)
+h = x + self.attn(self.ln1(x), self.ln1(x), self.ln1(x),
+                  attn_mask=mask, need_weights=False)[0]
+```
+`torch.triu(..., diagonal=1)` is `True` for `j > i`; in `nn.MultiheadAttention` a
+`True` boolean mask entry is **ignored**, so token `i` cannot attend to `j > i`.
+Masking is correct — it is not the source of any result.
 
 ## Validation audit (2026-07-19)
 

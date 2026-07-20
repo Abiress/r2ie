@@ -28,47 +28,55 @@ task). All architectures share **one tokenizer**, the same **vocab cap**, and a
 size, `d_model`, depth). The metric is **test-set token perplexity**
 (lower is better).
 
-**Current result (3000 steps, `d_model=128`, `n_layers=2`, vocab cap 4000,
-word-level tokenizer, Adam lr=1e-3, weight_decay=1e-5, CPU, R²IE with the soft
-Mass Compressor):**
+**Result (3000-step single-LR snapshot, `d_model=128`, `n_layers=2`, vocab cap
+4000, word-level tokenizer, Adam lr=1e-3, weight_decay=1e-5, CPU, R²IE with the
+soft Mass Compressor):**
 
-| Model | Params | Test perplexity |
+| Model | Params | Test perplexity @3000 |
 | --- | ---: | ---: |
-| **R²IE + DTFv3 + HDQ** | 1,731,625 | **4.59** |
 | SSA (linear-attention) | 1,301,412 | 6.11 |
+| **R²IE + DTFv3 + HDQ** | 1,731,625 | **4.59** |
 | R²IE + DTF + HDQ (v1) | 1,599,013 | 12.84 |
 | Mamba | 1,367,714 | 45.23 |
 | Transformer | 1,301,922 | 49.42 |
 
-The best R²IE variant (**R²IE + DTFv3 + HDQ**, test ppl **4.59**) achieves the
-**lowest test perplexity of all compared architectures** — beating SSA (≈1.33×),
-Mamba (≈9.9×), and Transformer (≈10.8×) — under this fixed, real-world protocol.
-The winning configuration (a) trains the soft Mass Compressor's codebook via its
-commitment loss and (b) uses the **DTFv3 coherence-driven global mixer** as the
-sole transformation field (ACT attention disabled so the two global mixers don't
-compete). R²IE's earlier v1 mixer (local graph diffusion) scored 12.84, so the
-global coherence mixer is what closed the gap to and past SSA.
+> ⚠️ **This snapshot is superseded by an extended study.** At a single shared
+> learning rate and a single early checkpoint (step 3000) R²IE happened to edge
+> out SSA (4.59 vs 6.11). A fuller study (per-architecture LR sweep
+> {5e-4, 1e-3, 2e-3} + 8000-step trajectory, see
+> [`BENCHMARKS.md`](BENCHMARKS.md) → "Extended study") shows **SSA dominates the
+> entire range** and reaches ~1.1 test perplexity by step 8000 while R²IE
+> plateaus near 4.1. The claim that "R²IE achieves the lowest test perplexity" is
+> therefore **retracted** — SSA is the strongest architecture on this task under
+> fair tuning. Full numbers, the protocol, the trajectory tables, and the
+> correction are in [`BENCHMARKS.md`](BENCHMARKS.md).
 
 Full numbers, the protocol, and the exact reproduction command are in
 [`BENCHMARKS.md`](BENCHMARKS.md). The verdict in that file is derived
-mechanically from the measured values.
+mechanically from the measured values; **no "R²IE outperforms all baselines"
+claim is made.**
 
 > **Correction history:** an earlier draft and the `v0.2.0` tag reported a test
-> perplexity of ~1.44 for R²IE. That figure came from a one-off evaluation
-> script with a perplexity-computation bug and has been **retracted** — it was
-> never reproduced by the official `standard_benchmark.py`. A subsequent honest
-> run showed R²IE losing to SSA (14.24 vs 11.09); two legitimate fixes (commitment
-> loss in training + DTFv3 as sole mixer) then brought R²IE to 4.59, ahead of SSA.
-> The numbers above are the correct, reproducible results from the official
-> `standard_benchmark.py`.
+> perplexity of ~1.44 for R²IE (a one-off eval-script bug, **retracted**, never
+> reproduced by the official `standard_benchmark.py`). A subsequent honest run
+> showed R²IE losing to SSA (14.24 vs 11.09); two legitimate fixes (commitment
+> loss in training + DTFv3 as sole mixer) then brought R²IE to 4.59 *at the 3000-
+> step snapshot*. The extended study (2026-07-20) further corrected this: SSA
+> overtakes R²IE by step 4000 and wins the full range.
 
-> Reproduce it:
+> Reproduce the original snapshot:
 > ```bash
 > python src/r2ie/standard_benchmark.py \
 >     --data-dir /path/to/wikitext-2-raw-v1 \
 >     --steps 3000 --seq-len 64 --batch-size 32 --vocab-cap 4000 \
 >     --d-model 128 --n-layers 2 --codebook-size 1024 --vq-mode soft \
 >     --weight-decay 1e-5
+> ```
+>
+> Reproduce the extended study:
+> ```bash
+> python src/r2ie/_extended_study.py --steps 8000 --checkpoint-every 1000 \
+>     --lrs 5e-4,1e-3,2e-3 --vocab-cap 4000 --d-model 128 --n-layers 2
 > ```
 
 ---
